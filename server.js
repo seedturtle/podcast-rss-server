@@ -22,7 +22,7 @@ const SHOW = {
   language: 'zh-tw',
   categories: ['Technology', 'News', 'Science'],
   imageUrl: process.env.COVER_IMAGE_URL || 'https://agent-cdn.minimax.io/mcp/cdn_upload/495582502232113157/382781085360351/1776780467_ef7b9790.png',
-  link: 'https://t.me/yuanyuan849_bot',
+  link: process.env.PODCAST_LINK || 'https://seedturtlepodcast.zeabur.app',
   ownerName: '洪醫師 Seedturtle',
   copyright: `Copyright ${new Date().getFullYear()} 拉拉熊晨間廣播`,
   ttl: 60  // minutes to cache before refresh
