@@ -1,0 +1,14 @@
+{
+  "name": "podcast-rss-server",
+  "version": "1.0.0",
+  "description": "拉拉熊晨間廣播 RSS Feed Server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "rss": "^1.2.2"
+  }
+}
