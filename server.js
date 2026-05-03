@@ -119,11 +119,19 @@ function generateRSS(files) {
 
   xml += `    <ttl>${SHOW.ttl}</ttl>\n`;
 
+  // 按日期從最早到最晚排序（EP1在最前，EP18在最後）
+  // 沒有日期的檔案排在最後
+  files.sort((a, b) => {
+    const da = a.name.match(/(\d{8})/)?.[1] || '99999999';
+    const db = b.name.match(/(\d{8})/)?.[1] || '99999999';
+    return da.localeCompare(db); // 字串比較 = 日期先後（越早越小）
+  });
+
   files.forEach((file, index) => {
     // 從檔名解析日期與集次
     // 格式：拉拉熊廣播_YYYYMMDD.mp3
     // EP集數 = 從基準日（2026-04-12）算起的天數 + 1
-    // EP1 = 2026-04-12，第18集 = 2026-05-03（差21天）
+    // EP1 = 2026-04-12，第17集 = 2026-04-28
     const nameMatch = file.name.match(/(\d{8})/);
     const dateStr = nameMatch ? nameMatch[1] : '';
     let episodeNum = 1;
