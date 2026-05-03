@@ -1,0 +1,7 @@
+{
+  "buildCommand": "docker build . -t app",
+  "startCommand": "docker run -p 3000:3000 app",
+  "devCommand": "docker run -p 3000:3000 -v $(pwd):/app app",
+  "installCommand": "",
+  "port": 3000
+}

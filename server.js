@@ -21,7 +21,7 @@ const SHOW = {
   email: 'seedturtle1976@gmail.com',
   language: 'zh-tw',
   categories: ['Technology', 'News', 'Science'],
-  imageUrl: process.env.COVER_IMAGE_URL || 'https://agent-cdn.minimax.io/mcp/cdn_upload/495582502232113157/382781085360351/1776780467_ef7b9790.png',
+  imageUrl: process.env.COVER_IMAGE_URL || 'https://agent-cdn.minimax.io/mcp/image_tool/output/495582502232113157/382781085360351/1776787752_9f154a9d.png',
   link: process.env.PODCAST_LINK || 'https://seedturtlepodcast.zeabur.app',
   ownerName: '洪醫師 Seedturtle',
   copyright: `Copyright ${new Date().getFullYear()} 拉拉熊晨間廣播`,
@@ -122,18 +122,34 @@ function generateRSS(files) {
   files.forEach((file, index) => {
     // 從檔名解析日期與集次
     // 格式：拉拉熊廣播_YYYYMMDD.mp3
+    // EP集數 = 從基準日（2026-04-12）算起的天數 + 1
+    // EP1 = 2026-04-12，第18集 = 2026-05-03（差21天）
     const nameMatch = file.name.match(/(\d{8})/);
     const dateStr = nameMatch ? nameMatch[1] : '';
-    const pubDate = file.modifiedTime
-      ? new Date(file.modifiedTime).toUTCString()
-      : new Date().toUTCString();
+    let episodeNum = 1;
+    let pubDateStr = file.modifiedTime || new Date().toISOString();
+    if (dateStr && dateStr.length === 8) {
+      const y = parseInt(dateStr.slice(0, 4));
+      const m = parseInt(dateStr.slice(4, 6)) - 1;
+      const d = parseInt(dateStr.slice(6, 8));
+      const fileDate = new Date(Date.UTC(y, m, d));
+      const baseDate = new Date(Date.UTC(2026, 3, 12)); // 2026-04-12 UTC
+      episodeNum = Math.round((fileDate - baseDate) / (1000 * 60 * 60 * 24)) + 1;
+      // 格式化發布日期為UTC 06:00 (適用於早晨廣播)
+      pubDateStr = new Date(Date.UTC(y, m, d, 6, 0, 0)).toUTCString();
+    } else {
+      // fallback：用 modifiedTime，但用於計算集數
+      const mtime = new Date(file.modifiedTime || Date.now());
+      const baseDate = new Date(Date.UTC(2026, 3, 12));
+      episodeNum = Math.round((mtime - baseDate) / (1000 * 60 * 60 * 24)) + 1;
+      pubDateStr = new Date(file.modifiedTime).toUTCString();
+    }
 
     // MP3 大小（bytes）
     const size = parseInt(file.size || 0);
     const durationSecs = Math.round((size / (128 * 1024 / 8))); // 估算（128kbps）
 
-    // 集次標題
-    const episodeNum = files.length - index;
+    // 集次標題（直接用日期，不用倒算）
     const episodeTitle = dateStr
       ? `第${episodeNum}集｜${dateStr.slice(0,4)}/${dateStr.slice(4,6)}/${dateStr.slice(6,8)}`
       : `第${episodeNum}集`;
@@ -141,10 +157,11 @@ function generateRSS(files) {
     xml += `    <item>
       <title><![CDATA[${episodeTitle}]]></title>
       <description><![CDATA[拉拉熊晨間廣播，${episodeTitle}。🌏 國際大局 💹 財經科技 🤖 AI Agent]]></description>
-      <pubDate>${pubDate}</pubDate>
+      <pubDate>${pubDateStr}</pubDate>
       <enclosure url="${getAudioUrl(file)}" type="audio/mpeg" length="${size}"/>
-      <guid isPermaLink="false">${file.id}</guid>
+      <guid isPermaLink="false">seedturtle_ep${episodeNum}_${file.id}</guid>
       <itunes:title>${episodeTitle}</itunes:title>
+      <itunes:episode>${episodeNum}</itunes:episode>
       <itunes:duration>${durationSecs}</itunes:duration>
       <itunes:explicit>false</itunes:explicit>
     </item>\n`;
