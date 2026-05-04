@@ -5,7 +5,6 @@
 const https = require('https');
 const express = require('express');
 const axios = require('axios');
-const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
 const PODCAST_FOLDER_ID = '1TgjlOxE1YfqYXw0ePuvQH2aPne1r77f2';
@@ -31,26 +30,20 @@ async function getPodcastFiles() {
   const result = await driveRequest('/drive/v3/files', {
     fields: 'files(id,name,mimeType,createdTime,modifiedTime,size,webContentLink,description)',
     q: `mimeType='audio/mpeg' and '${PODCAST_FOLDER_ID}' in parents and trashed=false`,
-    orderBy: 'modifiedTime desc',
+    orderBy: 'createdTime asc',
     pageSize: 50
   });
   return result.files || [];
 }
 
 // ========== MP3 公開網址（優先使用 CDN）==========
-// Google Drive 支援 description 存放 CDN URL
-// 流程：上傳 MP3 → 上傳 CDN → 將 CDN URL 存入 description
-// RSS 優先取 description，否則 fallback 到 Google Drive URL
 function getAudioUrl(file) {
-  // 第一優先：Google Drive description（存放 CDN URL）
   if (file.description && file.description.startsWith('http')) {
     return file.description;
   }
-  // 第二優先：Google Drive 公開網址
   if (file.webContentLink) {
     return file.webContentLink.replace('&format=mp3', '');
   }
-  // 第三：沒有任何網址（錯誤）
   return `https://drive.google.com/uc?id=${file.id}&format=mp3`;
 }
 
@@ -92,43 +85,30 @@ function buildRss(files) {
 
   xml += `    <ttl>${SHOW.ttl}</ttl>\n`;
 
-  // 按 Drive modifiedTime 從最早到最晚排序（最早的檔案 EP1）
-  // 沒有 modifiedTime 的檔案排在最後
+  // 按 Drive createdTime 從早到晚排序（第1個建立的=EP1）
   files.sort((a, b) => {
-    const ta = a.modifiedTime ? new Date(a.modifiedTime).getTime() : 0;
-    const tb = b.modifiedTime ? new Date(b.modifiedTime).getTime() : 0;
-    return ta - tb; // 越早越前面
+    const ta = a.createdTime ? new Date(a.createdTime).getTime() : 0;
+    const tb = b.createdTime ? new Date(b.createdTime).getTime() : 0;
+    return ta - tb;
   });
 
   files.forEach((file, index) => {
-    // EP 集數由檔名錄音日期計算（爸爸確認的正確邏輯）
-    // 基準：EP1 = 2026-04-12（第一集試播）
-    // 之後每一天加一集：EPN = (錄音日期 - 基準日).天數 + 1
+    // EP 集數 = 排序位置（第1個建立的=EP1，第N個=EPN）
+    const episodeNum = index + 1;
+
+    // 從檔名解析錄音日期（用於標題顯示）
     const nameMatch = file.name.match(/(\d{8})/);
     const dateStr = nameMatch ? nameMatch[1] : '';
-    let episodeNum = index + 1; // fallback：預設用排序位置
-    let pubDateStr = file.modifiedTime
-      ? new Date(file.modifiedTime).toUTCString()
+    // pubDate：使用 Drive createdTime（第1個建立的時間）
+    const pubDateStr = file.createdTime
+      ? new Date(file.createdTime).toUTCString()
       : new Date().toUTCString();
 
-    if (dateStr && dateStr.length === 8) {
-      const y = parseInt(dateStr.slice(0, 4));
-      const m = parseInt(dateStr.slice(4, 6)) - 1;
-      const d = parseInt(dateStr.slice(6, 8));
-      const fileDate = new Date(Date.UTC(y, m, d));
-      const baseDate = new Date(Date.UTC(2026, 3, 12)); // 2026-04-12 EP1 基準
-      episodeNum = Math.round((fileDate - baseDate) / (1000 * 60 * 60 * 24)) + 1;
-      // EP集數範圍限制（防止意外負數或超大值）
-      if (episodeNum < 1) episodeNum = index + 1;
-      // pubDate 改為「錄音日當天 06:00 UTC」
-      pubDateStr = new Date(Date.UTC(y, m, d, 6, 0, 0)).toUTCString();
-    }
-
-    // MP3 大小（bytes）
+    // MP3 大小（bytes），估算 duration
     const size = parseInt(file.size || 0);
     const durationSecs = Math.round((size / (128 * 1024 / 8)));
 
-    // 集次標題（顯示 EP 集數與錄音日期）
+    // 集次標題：顯示 EP 集數與錄音日期
     const episodeTitle = dateStr
       ? `第${episodeNum}集｜${dateStr.slice(0,4)}/${dateStr.slice(4,6)}/${dateStr.slice(6,8)}`
       : `第${episodeNum}集`;
@@ -165,7 +145,7 @@ app.get('/feed.xml', async (req, res) => {
     const files = await getPodcastFiles();
     const xml = buildRss(files);
     res.set('Content-Type', 'application/rss+xml; charset=utf-8');
-    res.set('Cache-Control', 'public, max-age=300'); // 5 min cache
+    res.set('Cache-Control', 'public, max-age=300');
     res.send(xml);
   } catch (err) {
     console.error('RSS error:', err.message);
