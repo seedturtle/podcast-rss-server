@@ -119,39 +119,25 @@ function generateRSS(files) {
 
   xml += `    <ttl>${SHOW.ttl}</ttl>\n`;
 
-  // 按日期從最早到最晚排序（EP1在最前，EP18在最後）
-  // 沒有日期的檔案排在最後
+  // 按 Drive modifiedTime 從最早到最晚排序（最早的檔案 EP1）
+  // 沒有 modifiedTime 的檔案排在最後
   files.sort((a, b) => {
-    const da = a.name.match(/(\d{8})/)?.[1] || '99999999';
-    const db = b.name.match(/(\d{8})/)?.[1] || '99999999';
-    return da.localeCompare(db); // 字串比較 = 日期先後（越早越小）
+    const ta = a.modifiedTime ? new Date(a.modifiedTime).getTime() : 0;
+    const tb = b.modifiedTime ? new Date(b.modifiedTime).getTime() : 0;
+    return ta - tb; // 時間越早越前面
   });
 
   files.forEach((file, index) => {
-    // 從檔名解析日期與集次
-    // 格式：拉拉熊廣播_YYYYMMDD.mp3
-    // EP集數 = 從基準日（2026-04-12）算起的天數 + 1
-    // EP1 = 2026-04-12，第17集 = 2026-04-28
+    // EP 集數 = 這個檔案在排序後的位置（第幾個建立的）
+    // 第1個建立的檔案（最舊）= EP1，第18個建立的檔案（最新）= EP18
+    const episodeNum = index + 1;
+
+    // 從檔名解析錄音日期（用於標題顯示，不影響 EP 集數）
     const nameMatch = file.name.match(/(\d{8})/);
     const dateStr = nameMatch ? nameMatch[1] : '';
-    let episodeNum = 1;
-    let pubDateStr = file.modifiedTime || new Date().toISOString();
-    if (dateStr && dateStr.length === 8) {
-      const y = parseInt(dateStr.slice(0, 4));
-      const m = parseInt(dateStr.slice(4, 6)) - 1;
-      const d = parseInt(dateStr.slice(6, 8));
-      const fileDate = new Date(Date.UTC(y, m, d));
-      const baseDate = new Date(Date.UTC(2026, 3, 12)); // 2026-04-12 UTC
-      episodeNum = Math.round((fileDate - baseDate) / (1000 * 60 * 60 * 24)) + 1;
-      // 格式化發布日期為UTC 06:00 (適用於早晨廣播)
-      pubDateStr = new Date(Date.UTC(y, m, d, 6, 0, 0)).toUTCString();
-    } else {
-      // fallback：用 modifiedTime，但用於計算集數
-      const mtime = new Date(file.modifiedTime || Date.now());
-      const baseDate = new Date(Date.UTC(2026, 3, 12));
-      episodeNum = Math.round((mtime - baseDate) / (1000 * 60 * 60 * 24)) + 1;
-      pubDateStr = new Date(file.modifiedTime).toUTCString();
-    }
+    const pubDateStr = file.modifiedTime
+      ? new Date(file.modifiedTime).toUTCString()
+      : new Date().toUTCString();
 
     // MP3 大小（bytes）
     const size = parseInt(file.size || 0);
