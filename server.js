@@ -1,67 +1,33 @@
 /**
- * 拉拉熊晨間廣播 RSS Feed Server
- * 
- * 查询 Google Drive podcast 資料夾，動態生成 RSS XML
- * 部署到 Zeabur，透過 /feed.xml 供 Podcast 平台訂閱
+ * 拉拉熊晨間廣播 RSS Feed 伺服器
+ * 自動從 Google Drive 讀取 MP3 檔案產生 Podcast RSS
  */
-
-const express = require('express');
 const https = require('https');
+const express = require('express');
+const axios = require('axios');
+const crypto = require('crypto');
 
-const app = express();
-const PORT = parseInt(process.env.PORT || "3000", 10);
-
-// ========== 設定區 ==========
+const PORT = process.env.PORT || 3000;
 const PODCAST_FOLDER_ID = '1TgjlOxE1YfqYXw0ePuvQH2aPne1r77f2';
-const FEED_BASE_URL = process.env.FEED_BASE_URL || 'https://seedturtlepodcast.zeabur.app';  // KIRITU/podcast
-const SHOW = {
-  title: '拉拉熊晨間廣播',
-  description: '每天早上7點，透過AI為您整理國際大局、財經科技與AI Agent最新動態。溫暖的聲音，豐富的內容，拉拉熊陪伴您的每一天早晨。',
-  author: '拉拉熊 🐻',
-  email: 'seedturtle1976@gmail.com',
-  language: 'zh-tw',
-  categories: ['Technology', 'News', 'Science'],
-  imageUrl: process.env.COVER_IMAGE_URL || 'https://agent-cdn.minimax.io/mcp/image_tool/output/495582502232113157/382781085360351/1776787752_9f154a9d.png',
-  link: process.env.PODCAST_LINK || 'https://seedturtlepodcast.zeabur.app',
-  ownerName: '洪醫師 Seedturtle',
-  copyright: `Copyright ${new Date().getFullYear()} 拉拉熊晨間廣播`,
-  ttl: 60  // minutes to cache before refresh
-};
+const MATON_API_KEY = 'xGdDL_GOLVLjZuZ9k65uJ513SR2vMJ7aczzIrYzOxU_B7TPUp4o2Cz12J2FMRwWonGrDG2BMxrIZTsm8BYf7lR291lZ-Mv_XKvU';
+const MATON_CONN = 'aa84aef8-287a-4271-a4b7-26a67b0c6adf';
+const MATON_BASE = 'https://gateway.maton.ai/google-drive';
 
-// Maton API Gateway
-const MATON_KEY = process.env.MATON_API_KEY;
-const CONN_ID   = process.env.MATON_CONN_ID || 'aa84aef8-287a-4271-a4b7-26a67b0c6adf';
-
-// ========== Google Drive 查詢（Maton Gateway）==========
-function driveRequest(path, params = {}) {
-  return new Promise((resolve, reject) => {
-    const queryParts = Object.entries(params).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
-    const qs = queryParts.length ? '?' + queryParts.join('&') : '';
-    const options = {
-      hostname: 'gateway.maton.ai',
-      path: `/google-drive${path}${qs}`,
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${MATON_KEY}`,
-        'Maton-Connection': CONN_ID
-      }
-    };
-    const req = https.request(options, res => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try { resolve(JSON.parse(data)); }
-        catch (e) { reject(new Error('JSON parse error: ' + data.slice(0, 200))); }
-      });
-    });
-    req.on('error', reject);
-    req.setTimeout(10000, () => reject(new Error('Drive request timeout')));
-    req.end();
+// Google Drive API helper
+async function driveRequest(path, params = {}) {
+  const url = new URL(MATON_BASE + path);
+  Object.keys(params).forEach(k => url.searchParams.set(k, params[k]));
+  const response = await axios.get(url.toString(), {
+    headers: {
+      'Authorization': `Bearer ${MATON_API_KEY}`,
+      'Maton-Connection': MATON_CONN
+    }
   });
+  return response.data;
 }
 
+// ========== 讀取 podcast 資料夾 ==========
 async function getPodcastFiles() {
-  // 查詢 podcast 資料夾中的 MP3 檔案，按修改時間倒序
   const result = await driveRequest('/drive/v3/files', {
     fields: 'files(id,name,mimeType,createdTime,modifiedTime,size,webContentLink,description)',
     q: `mimeType='audio/mpeg' and '${PODCAST_FOLDER_ID}' in parents and trashed=false`,
@@ -80,36 +46,43 @@ function getAudioUrl(file) {
   if (file.description && file.description.startsWith('http')) {
     return file.description;
   }
-  // 第二優先：webContentLink（如果有）
+  // 第二優先：Google Drive 公開網址
   if (file.webContentLink) {
-    return file.webContentLink.replace('&export=download', '&format=mp3');
+    return file.webContentLink.replace('&format=mp3', '');
   }
-  // 第三優先：CDN CDS 格式
-  return `https://drive.google.com/uc?id=${file.id}&export=download`;
+  // 第三：沒有任何網址（錯誤）
+  return `https://drive.google.com/uc?id=${file.id}&format=mp3`;
 }
 
-// ========== RSS XML 生成 ==========
-function generateRSS(files) {
-  const baseUrl = FEED_BASE_URL;
-  
+// ========== 產生 RSS XML ==========
+function buildRss(files) {
+  const SHOW = {
+    title: '拉拉熊晨間廣播',
+    description: '拉拉熊每日晨間廣播，帶你掌握國際大局、兩岸台海、財經科技與 AI Agent 最新動態。',
+    link: 'https://seedturtlepodcast.zeabur.app',
+    imageUrl: 'https://agent-cdn.minimax.io/mcp/cdn_upload/495582502232113157/382781085360351/1776813216_8ee24b04.png',
+    language: 'zh-tw',
+    ttl: '5',
+    author: '拉拉熊',
+    email: 'seedturtle1976@gmail.com'
+  };
+
   let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom">
+<rss version="2.0"
+  xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+  xmlns:atom="http://www.w3.org/2005/Atom"
+>
   <channel>
-    <title><![CDATA[${SHOW.title}]]></title>
-    <link>${SHOW.link}</link>
+    <title>${SHOW.title}</title>
     <description><![CDATA[${SHOW.description}]]></description>
+    <link>${SHOW.link}</link>
     <language>${SHOW.language}</language>
-    <copyright>${SHOW.copyright}</copyright>
+    <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
     <itunes:author>${SHOW.author}</itunes:author>
-    <itunes:summary><![CDATA[${SHOW.description}]]></itunes:summary>
-    <itunes:owner>
-      <itunes:name>${SHOW.ownerName}</itunes:name>
-      <itunes:email>${SHOW.email}</itunes:email>
-    </itunes:owner>
+    <itunes:email>${SHOW.email}</itunes:email>
+    <itunes:category text="News" />
     <itunes:explicit>false</itunes:explicit>
-    <itunes:category text="Technology"/>
-    <itunes:category text="News"/>
-    <atom:link href="${baseUrl}/feed.xml" rel="self" type="application/rss+xml"/>
+    <ttl>${SHOW.ttl}</ttl>
 `;
 
   if (SHOW.imageUrl) {
@@ -124,36 +97,51 @@ function generateRSS(files) {
   files.sort((a, b) => {
     const ta = a.modifiedTime ? new Date(a.modifiedTime).getTime() : 0;
     const tb = b.modifiedTime ? new Date(b.modifiedTime).getTime() : 0;
-    return ta - tb; // 時間越早越前面
+    return ta - tb; // 越早越前面
   });
 
   files.forEach((file, index) => {
-    // EP 集數 = 這個檔案在排序後的位置（第幾個建立的）
-    // 第1個建立的檔案（最舊）= EP1，第18個建立的檔案（最新）= EP18
-    const episodeNum = index + 1;
-
-    // 從檔名解析錄音日期（用於標題顯示，不影響 EP 集數）
+    // EP 集數由檔名錄音日期計算（爸爸確認的正確邏輯）
+    // 基準：EP1 = 2026-04-12（第一集試播）
+    // 之後每一天加一集：EPN = (錄音日期 - 基準日).天數 + 1
     const nameMatch = file.name.match(/(\d{8})/);
     const dateStr = nameMatch ? nameMatch[1] : '';
-    const pubDateStr = file.modifiedTime
+    let episodeNum = index + 1; // fallback：預設用排序位置
+    let pubDateStr = file.modifiedTime
       ? new Date(file.modifiedTime).toUTCString()
       : new Date().toUTCString();
 
+    if (dateStr && dateStr.length === 8) {
+      const y = parseInt(dateStr.slice(0, 4));
+      const m = parseInt(dateStr.slice(4, 6)) - 1;
+      const d = parseInt(dateStr.slice(6, 8));
+      const fileDate = new Date(Date.UTC(y, m, d));
+      const baseDate = new Date(Date.UTC(2026, 3, 12)); // 2026-04-12 EP1 基準
+      episodeNum = Math.round((fileDate - baseDate) / (1000 * 60 * 60 * 24)) + 1;
+      // EP集數範圍限制（防止意外負數或超大值）
+      if (episodeNum < 1) episodeNum = index + 1;
+      // pubDate 改為「錄音日當天 06:00 UTC」
+      pubDateStr = new Date(Date.UTC(y, m, d, 6, 0, 0)).toUTCString();
+    }
+
     // MP3 大小（bytes）
     const size = parseInt(file.size || 0);
-    const durationSecs = Math.round((size / (128 * 1024 / 8))); // 估算（128kbps）
+    const durationSecs = Math.round((size / (128 * 1024 / 8)));
 
-    // 集次標題（直接用日期，不用倒算）
+    // 集次標題（顯示 EP 集數與錄音日期）
     const episodeTitle = dateStr
       ? `第${episodeNum}集｜${dateStr.slice(0,4)}/${dateStr.slice(4,6)}/${dateStr.slice(6,8)}`
       : `第${episodeNum}集`;
+
+    // guid 固定格式：永遠認得同一集
+    const guidValue = `seedturtle_ep${episodeNum}_${file.id}`;
 
     xml += `    <item>
       <title><![CDATA[${episodeTitle}]]></title>
       <description><![CDATA[拉拉熊晨間廣播，${episodeTitle}。🌏 國際大局 💹 財經科技 🤖 AI Agent]]></description>
       <pubDate>${pubDateStr}</pubDate>
       <enclosure url="${getAudioUrl(file)}" type="audio/mpeg" length="${size}"/>
-      <guid isPermaLink="false">seedturtle_ep${episodeNum}_${file.id}</guid>
+      <guid isPermaLink="false">${guidValue}</guid>
       <itunes:title>${episodeTitle}</itunes:title>
       <itunes:episode>${episodeNum}</itunes:episode>
       <itunes:duration>${durationSecs}</itunes:duration>
@@ -166,52 +154,25 @@ function generateRSS(files) {
 }
 
 // ========== 路由 ==========
+const app = express();
 
-// 健康檢查
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
-// RSS Feed
 app.get('/feed.xml', async (req, res) => {
   try {
     const files = await getPodcastFiles();
-    const xml = generateRSS(files);
-    
-    res.set({
-      'Content-Type': 'application/rss+xml; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',  // 1小時快取
-      'Access-Control-Allow-Origin': '*'
-    });
+    const xml = buildRss(files);
+    res.set('Content-Type', 'application/rss+xml; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=300'); // 5 min cache
     res.send(xml);
-    console.log(`[${new Date().toISOString()}] RSS generated: ${files.length} episodes`);
   } catch (err) {
     console.error('RSS error:', err.message);
-    res.status(500).send(`<!-- RSS Error: ${err.message} -->`);
+    res.status(500).send('RSS error: ' + err.message);
   }
 });
 
-// 文字版列表（除錯用）
-app.get('/episodes', async (req, res) => {
-  try {
-    const files = await getPodcastFiles();
-    res.json({
-      count: files.length,
-      episodes: files.map(f => ({
-        id: f.id,
-        name: f.name,
-        modifiedTime: f.modifiedTime,
-        size: f.size
-      }))
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ========== 啟動 ==========
 app.listen(PORT, () => {
-  console.log(`🐻 拉拉熊 RSS Server 啟動！`);
-  console.log(`📡 Feed URL: ${FEED_BASE_URL}/feed.xml`);
-  console.log(`📋 Episodes: ${FEED_BASE_URL}/episodes`);
+  console.log(`Podcast RSS server running on port ${PORT}`);
 });
