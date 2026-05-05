@@ -1,1 +1,5 @@
-providers = ["node"]
+[node]
+version = 20
+
+[nixpacks]
+nixpkgs_archive = "nixpkgs-23.11"
