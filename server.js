@@ -28,7 +28,9 @@ const FALLBACK_RSS = `<?xml version="1.0" encoding="UTF-8"?>
 function getAudioUrl(file) {
   const fileId = file.id;
   // Google Drive 直接下載（302 redirect，最可靠）
-  return `https://drive.google.com/uc?export=download&id=${fileId}&format=mp3`;
+  const url = `https://drive.google.com/uc?export=download&id=${fileId}&format=mp3`;
+  // XML-escape ampersands for RSS feed
+  return url.replace(/&/g, '&amp;');
 }
 
 // 發送 Drive API 請求（純 Node.js，零依賴）
