@@ -83,6 +83,7 @@ function buildRss(files) {
     <link>https://seedturtlepodcast.zeabur.app/</link>
     <description><![CDATA[拉拉熊每日晨間廣播，🌏 國際大局 💹 財經科技 🤖 AI Agent。每天早上五點，拉拉熊用溫暖的台灣男聲陪你迎接新的一天。]]></description>
     <language>zh-tw</language>
+    <copyright>Copyright 2026 拉拉熊晨間廣播</copyright>
     <lastBuildDate>${now}</lastBuildDate>
     <image>
       <url>${coverUrl}</url>
@@ -92,7 +93,7 @@ function buildRss(files) {
     <itunes:author>拉拉熊</itunes:author>
     <itunes:subtitle>拉拉熊每日晨間廣播，溫暖你的每一天</itunes:subtitle>
     <itunes:summary><![CDATA[拉拉熊每日晨間廣播，每天早上五點為你帶來：🌏 國際大局最新動態、💹 財經科技與 AI Agent 產業趨勢、🏥 醫療健康新知，還有拉拉熊溫暖的陪伴與反思。]]></itunes:summary>
-    <itunes:explicit>false</itunes:explicit>
+    <itunes:explicit>no</itunes:explicit>
     <itunes:image href="${coverUrl}"/>
     <itunes:category text="News &amp; Politics"/>
     <itunes:category text="Technology"/>
@@ -100,7 +101,7 @@ function buildRss(files) {
       <itunes:name>拉拉熊</itunes:name>
       <itunes:email>seedturtle@gmail.com</itunes:email>
     </itunes:owner>
-    <ttl>5</ttl>
+    <ttl>60</ttl>
     <atom:link href="https://seedturtlepodcast.zeabur.app/feed.xml" rel="self" type="application/rss+xml"/>
 `;
   files.forEach((file, index) => {
@@ -118,12 +119,14 @@ function buildRss(files) {
     xml += `    <item>
       <title><![CDATA[${title}]]></title>
       <description><![CDATA[拉拉熊晨間廣播，${title}。🌏 國際大局 💹 財經科技 🤖 AI Agent]]></description>
+      <itunes:summary><![CDATA[拉拉熊晨間廣播，${title}。🌏 國際大局 💹 財經科技 🤖 AI Agent]]></itunes:summary>
       <pubDate>${pubDate}</pubDate>
       <enclosure url="${audioUrl}" type="audio/mpeg" length="${size}"/>
-      <guid isPermaLink="false">seedturtle_ep${episodeNum}_${file.id}</guid>
+      <guid isPermaLink="true">seedturtle_ep${episodeNum}_${file.id}</guid>
       <itunes:title>${title}</itunes:title>
       <itunes:episode>${episodeNum}</itunes:episode>
-      <itunes:explicit>false</itunes:explicit>
+      <itunes:duration>${Math.floor(size / 16000)}</itunes:duration>
+      <itunes:explicit>no</itunes:explicit>
     </item>\n`;
   });
   return xml + '  </channel>\n</rss>';
