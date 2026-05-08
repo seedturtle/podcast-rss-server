@@ -72,7 +72,8 @@ async function getPodcastFiles() {
   const result = await httpsGet(parsed.hostname, parsed.pathname, parsed.search);
   const files = result.files || [];
   console.log(`[RSS] Fetched ${files.length} files from Google Drive`);
-  return files;
+  // 反轉：最新的集數在最上面
+  return files.reverse();
 }
 
 function buildRss(files) {
@@ -107,7 +108,8 @@ function buildRss(files) {
     <atom:link href="https://seedturtlepodcast.zeabur.app/feed.xml" rel="self" type="application/rss+xml"/>
 `;
   files.forEach((file, index) => {
-    const episodeNum = index + 1;
+    const totalFiles = files.length;
+    const episodeNum = totalFiles - index;
     // 從檔名抓日期（如：拉拉熊廣播_20260507.mp3）
     const nameMatch = file.name.match(/(\d{8})/);
     const dateStr = nameMatch ? nameMatch[1] : '';
@@ -146,8 +148,8 @@ const server = http.createServer(async (req, res) => {
       const files = await getPodcastFiles();
       console.log(`[RSS] Building feed with ${files.length} episodes`);
       if (files.length > 0) {
-        console.log(`[RSS] Latest: ${files[files.length-1].name}`);
-        console.log(`[RSS] Oldest: ${files[0].name}`);
+        console.log(`[RSS] Latest (top): ${files[0].name}`);
+        console.log(`[RSS] Oldest (bottom): ${files[files.length-1].name}`);
       }
       const xml = buildRss(files);
       res.writeHead(200, {
