@@ -20,7 +20,7 @@ const FALLBACK_RSS = `<?xml version="1.0" encoding="UTF-8"?>
     <title>拉拉熊晨間廣播</title>
     <description>拉拉熊每日晨間廣播，正在恢復中...</description>
     <language>zh-tw</language>
-    <itunes:explicit>false</itunes:explicit>
+    <itunes:explicit>no</itunes:explicit>
   </channel>
 </rss>`;
 
@@ -96,9 +96,9 @@ function buildRss(files) {
     <itunes:author>拉拉熊</itunes:author>
     <itunes:subtitle>拉拉熊每日晨間廣播，溫暖你的每一天</itunes:subtitle>
     <itunes:summary><![CDATA[拉拉熊每日晨間廣播，每天早上五點為你帶來：🌏 國際大局最新動態、💹 財經科技與 AI Agent 產業趨勢、🏥 醫療健康新知，還有拉拉熊溫暖的陪伴與反思。]]></itunes:summary>
-    <itunes:explicit>false</itunes:explicit>
+    <itunes:explicit>no</itunes:explicit>
     <itunes:image href="${coverUrl}"/>
-    <itunes:category text="News"/>
+    <itunes:category text="Government"/>
     <itunes:category text="Technology"/>
     <itunes:owner>
       <itunes:name>拉拉熊</itunes:name>
@@ -130,7 +130,7 @@ function buildRss(files) {
       <itunes:title>${title}</itunes:title>
       <itunes:episode>${episodeNum}</itunes:episode>
       <itunes:duration>${Math.floor(size / 16000)}</itunes:duration>
-      <itunes:explicit>false</itunes:explicit>
+      <itunes:explicit>no</itunes:explicit>
     </item>\n`;
   });
   return xml + '  </channel>\n</rss>';
