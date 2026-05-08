@@ -70,7 +70,9 @@ async function getPodcastFiles() {
 
   const parsed = new URL(fullUrl.toString());
   const result = await httpsGet(parsed.hostname, parsed.pathname, parsed.search);
-  return result.files || [];
+  const files = result.files || [];
+  console.log(`[RSS] Fetched ${files.length} files from Google Drive`);
+  return files;
 }
 
 function buildRss(files) {
@@ -142,6 +144,11 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/feed.xml' || req.url === '/') {
     try {
       const files = await getPodcastFiles();
+      console.log(`[RSS] Building feed with ${files.length} episodes`);
+      if (files.length > 0) {
+        console.log(`[RSS] Latest: ${files[files.length-1].name}`);
+        console.log(`[RSS] Oldest: ${files[0].name}`);
+      }
       const xml = buildRss(files);
       res.writeHead(200, {
         'Content-Type': 'application/rss+xml; charset=utf-8',
