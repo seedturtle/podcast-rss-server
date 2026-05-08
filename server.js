@@ -98,7 +98,7 @@ function buildRss(files) {
     <itunes:summary><![CDATA[拉拉熊每日晨間廣播，每天早上五點為你帶來：🌏 國際大局最新動態、💹 財經科技與 AI Agent 產業趨勢、🏥 醫療健康新知，還有拉拉熊溫暖的陪伴與反思。]]></itunes:summary>
     <itunes:explicit>no</itunes:explicit>
     <itunes:image href="${coverUrl}"/>
-    <itunes:category text="Government"/>
+    <itunes:category text="News &amp; Politics"/>
     <itunes:category text="Technology"/>
     <itunes:owner>
       <itunes:name>拉拉熊</itunes:name>
