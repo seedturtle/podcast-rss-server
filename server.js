@@ -27,10 +27,9 @@ const FALLBACK_RSS = `<?xml version="1.0" encoding="UTF-8"?>
 // Google Drive 直接下載 URL（繞過 CDN）
 function getAudioUrl(file) {
   const fileId = file.id;
-  // Google Drive 直接下載（302 redirect，最可靠）
-  const url = `https://drive.google.com/uc?export=download&id=${fileId}&format=mp3`;
-  // XML-escape ampersands for RSS feed
-  return url.replace(/&/g, '&amp;');
+  // 用本機代理 URL，確保以 .mp3 結尾（Apple Podcasts 需要）
+  // 實際請求時會 302 轉址到 Google Drive 直接下載
+  return `https://seedturtlepodcast.zeabur.app/audio/${fileId}.mp3`;
 }
 
 // 發送 Drive API 請求（純 Node.js，零依賴）
@@ -98,7 +97,9 @@ function buildRss(files) {
     <itunes:summary><![CDATA[拉拉熊每日晨間廣播，每天早上五點為你帶來：🌏 國際大局最新動態、💹 財經科技與 AI Agent 產業趨勢、🏥 醫療健康新知，還有拉拉熊溫暖的陪伴與反思。]]></itunes:summary>
     <itunes:explicit>false</itunes:explicit>
     <itunes:image href="${coverUrl}"/>
-    <itunes:category text="News &amp; Politics"/>
+    <itunes:category text="News">
+      <itunes:category text="Daily News"/>
+    </itunes:category>
     <itunes:category text="Technology"/>
     <itunes:owner>
       <itunes:name>拉拉熊</itunes:name>
@@ -122,6 +123,7 @@ function buildRss(files) {
 
     xml += `    <item>
       <title><![CDATA[${title}]]></title>
+      <link>https://seedturtlepodcast.zeabur.app/</link>
       <description><![CDATA[拉拉熊晨間廣播，${title}。🌏 國際大局 💹 財經科技 🤖 AI Agent]]></description>
       <itunes:summary><![CDATA[拉拉熊晨間廣播，${title}。🌏 國際大局 💹 財經科技 🤖 AI Agent]]></itunes:summary>
       <pubDate>${pubDate}</pubDate>
@@ -162,6 +164,19 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/rss+xml; charset=utf-8' });
       res.end(FALLBACK_RSS);
     }
+    return;
+  }
+  // 音頻代理：302 轉址到 Google Drive 直接下載
+  const audioMatch = req.url.match(/^\/audio\/([a-zA-Z0-9_-]+)\.mp3$/);
+  if (audioMatch) {
+    const fileId = audioMatch[1];
+    const driveUrl = `https://drive.google.com/uc?export=download&id=${fileId}&format=mp3`;
+    console.log(`[AUDIO] Redirecting ${fileId} to Google Drive`);
+    res.writeHead(302, {
+      'Location': driveUrl,
+      'Cache-Control': 'public, max-age=86400'
+    });
+    res.end();
     return;
   }
   res.writeHead(404);
