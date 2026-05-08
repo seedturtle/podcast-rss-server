@@ -75,15 +75,31 @@ async function getPodcastFiles() {
 
 function buildRss(files) {
   const now = new Date().toUTCString();
+  const coverUrl = 'https://drive.google.com/uc?export=download&amp;id=11NAjcBCsUbsIvYzrZ3NDuYRmsgH9xP8H';
   let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>拉拉熊晨間廣播</title>
-    <description><![CDATA[拉拉熊每日晨間廣播，🌏 國際大局 💹 財經科技 🤖 AI Agent]]></description>
+    <link>https://seedturtlepodcast.zeabur.app/</link>
+    <description><![CDATA[拉拉熊每日晨間廣播，🌏 國際大局 💹 財經科技 🤖 AI Agent。每天早上五點，拉拉熊用溫暖的台灣男聲陪你迎接新的一天。]]></description>
     <language>zh-tw</language>
     <lastBuildDate>${now}</lastBuildDate>
+    <image>
+      <url>${coverUrl}</url>
+      <title>拉拉熊晨間廣播</title>
+      <link>https://seedturtlepodcast.zeabur.app/</link>
+    </image>
     <itunes:author>拉拉熊</itunes:author>
+    <itunes:subtitle>拉拉熊每日晨間廣播，溫暖你的每一天</itunes:subtitle>
+    <itunes:summary><![CDATA[拉拉熊每日晨間廣播，每天早上五點為你帶來：🌏 國際大局最新動態、💹 財經科技與 AI Agent 產業趨勢、🏥 醫療健康新知，還有拉拉熊溫暖的陪伴與反思。]]></itunes:summary>
     <itunes:explicit>false</itunes:explicit>
+    <itunes:image href="${coverUrl}"/>
+    <itunes:category text="News &amp; Politics"/>
+    <itunes:category text="Technology"/>
+    <itunes:owner>
+      <itunes:name>拉拉熊</itunes:name>
+      <itunes:email>seedturtle@gmail.com</itunes:email>
+    </itunes:owner>
     <ttl>5</ttl>
     <atom:link href="https://seedturtlepodcast.zeabur.app/feed.xml" rel="self" type="application/rss+xml"/>
 `;
