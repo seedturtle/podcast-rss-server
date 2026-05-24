@@ -1,0 +1,12 @@
+{
+  "name": "mchswallow-podcast-rss",
+  "version": "1.0.0",
+  "description": "MCH Swallow 吞嚥 Podcast RSS Feed",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

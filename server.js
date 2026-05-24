@@ -1,0 +1,170 @@
+const http = require("http");
+const https = require("https");
+const url = require("url");
+
+const PORT = parseInt(process.env.PORT || "3000", 10);
+const SITE_URL = process.env.SITE_URL || "https://mchswallowpodcast.zeabur.app";
+const PODCAST_FOLDER_ID = process.env.PODCAST_FOLDER_ID || "1Yiwx-jIqmw37TvbMl5dDbVPcgetEPzIW";
+const MATON_API_KEY = process.env.MATON_API_KEY || "";
+const PODCAST_TITLE = process.env.PODCAST_TITLE || "MCH Swallow 吞嚥 Podcast";
+const PODCAST_DESCRIPTION = process.env.PODCAST_DESCRIPTION || "吞嚥復健、肌能訓練與臨床經驗分享";
+const PODCAST_EMAIL = process.env.PODCAST_EMAIL || "mchswallow@gmail.com";
+const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || "https://seedturtle.zo.space/images/mch-podcast-cover.png";
+
+function matonFetch(path, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const fullUrl = path.startsWith("http") ? path : `https://gateway.maton.ai${path}`;
+    const parsed = new URL(fullUrl);
+    const options = {
+      hostname: parsed.hostname,
+      port: 443,
+      path: parsed.pathname + parsed.search,
+      method: opts.method || "GET",
+      headers: {
+        Authorization: `Bearer ${MATON_API_KEY}`,
+        ...opts.headers,
+      },
+    };
+    const req = https.request(options, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => {
+        const body = Buffer.concat(chunks);
+        try {
+          resolve({ status: res.statusCode, headers: res.headers, body: JSON.parse(body) });
+        } catch {
+          resolve({ status: res.statusCode, headers: res.headers, body, isBuffer: true });
+        }
+      });
+    });
+    req.on("error", reject);
+    if (opts.body) req.write(opts.body);
+    req.end();
+  });
+}
+
+async function getAudioFiles() {
+  const query = encodeURIComponent(`'${PODCAST_FOLDER_ID}' in parents and mimeType='audio/mpeg' and trashed=false`);
+  const res = await matonFetch(`/google-drive/drive/v3/files?q=${query}&fields=files(id,name,mimeType,createdTime,size)&orderBy=createdTime desc`);
+  if (res.status !== 200 || !res.body.files) {
+    console.error("[RSS] Error:", res.body.message || JSON.stringify(res.body));
+    return [];
+  }
+  return res.body.files;
+}
+
+function buildRSS(files) {
+  const base = SITE_URL.replace(/\/$/, "");
+  const items = files
+    .filter((f) => f.name && f.name.endsWith(".mp3"))
+    .map((f) => {
+      const audioUrl = `${base}/audio/${f.id}`;
+      const pubDate = f.createdTime ? new Date(f.createdTime).toUTCString() : new Date().toUTCString();
+      return `
+    <item>
+      <title>${f.name.replace(/\.mp3$/i, "")}</title>
+      <enclosure url="${audioUrl}" type="audio/mpeg" length="${f.size || 0}" />
+      <guid>${f.id}</guid>
+      <pubDate>${pubDate}</pubDate>
+    </item>`;
+    })
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+  xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+  xmlns:podcast="https://podcastindex.org/namespace/1.0"
+  xmlns:atom="http://www.w3.org/2005/Atom"
+  xml:lang="zh-TW">
+  <channel>
+    <title>${PODCAST_TITLE}</title>
+    <link>${SITE_URL}</link>
+    <atom:link href="${SITE_URL}/feed.xml" rel="self" type="application/rss+xml" />
+    <description><![CDATA[${PODCAST_DESCRIPTION}]]></description>
+    <language>zh-TW</language>
+    <itunes:author>${PODCAST_EMAIL}</itunes:author>
+    <itunes:email>${PODCAST_EMAIL}</itunes:email>
+    <itunes:summary><![CDATA[${PODCAST_DESCRIPTION}]]></itunes:summary>
+    <itunes:image href="${PODCAST_COVER_URL}" />
+    <itunes:category text="Health &amp; Fitness" />
+    <itunes:category text="Medicine" />
+    ${items}
+  </channel>
+</rss>`;
+}
+
+const server = http.createServer(async (req, res) => {
+  const parsedUrl = url.parse(req.url, true);
+  const pathname = parsedUrl.pathname;
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      Allow: "GET, HEAD, OPTIONS",
+    });
+    res.end();
+    return;
+  }
+
+  if (pathname === "/feed.xml" || pathname === "/") {
+    res.setHeader("Content-Type", "application/rss+xml; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache");
+    try {
+      const files = await getAudioFiles();
+      res.end(buildRSS(files));
+    } catch (e) {
+      console.error("[RSS] Error:", e.message);
+      if (!res.headersSent) res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("RSS Error: " + e.message);
+    }
+    return;
+  }
+
+  const audioMatch = pathname.match(/^\/audio\/(.+)/);
+  if (audioMatch) {
+    const fileId = audioMatch[1];
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    try {
+      const apiRes = await matonFetch(`/google-drive/drive/v3/files/${fileId}?alt=media`);
+      if (apiRes.status === 200) {
+        if (apiRes.headers["content-type"]) res.setHeader("Content-Type", apiRes.headers["content-type"]);
+        if (apiRes.headers["content-length"]) res.setHeader("Content-Length", apiRes.headers["content-length"]);
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        if (apiRes.isBuffer) {
+          res.end(apiRes.body);
+        } else {
+          res.end(apiRes.body);
+        }
+      } else {
+        if (!res.headersSent) res.writeHead(apiRes.status, { "Content-Type": "text/plain" });
+        res.end(apiRes.body.error ? JSON.stringify(apiRes.body) : "Audio not found");
+      }
+    } catch (e) {
+      console.error("[AUDIO] Error:", e.message);
+      if (!res.headersSent) res.writeHead(502, { "Content-Type": "text/plain" });
+      res.end("Audio proxy error: " + e.message);
+    }
+    return;
+  }
+
+  if (pathname === "/health") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "ok", time: new Date().toISOString() }));
+    return;
+  }
+
+  res.writeHead(404, { "Content-Type": "text/plain" });
+  res.end("Not found");
+});
+
+server.listen(PORT, () => {
+  console.log(`🎙  MCH Swallow RSS 啟動中...`);
+  console.log(`🌐  RSS Feed: ${SITE_URL}/feed.xml`);
+  console.log(`🎵  Audio Proxy: ${SITE_URL}/audio/<file_id>`);
+  console.log(`❤️  Health: ${SITE_URL}/health`);
+  if (!MATON_API_KEY) console.warn("⚠️  MATON_API_KEY 未設定！");
+});
