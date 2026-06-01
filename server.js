@@ -61,18 +61,27 @@ function httpsGet(hostname, pathname, search) {
 
 async function getPodcastFiles() {
   // 查詢 podcast 資料夾中的所有 mp3 檔，按 createdTime 排序（最舊在前 = EP1）
-  const fullUrl = new URL(MATON_BASE + '/google-drive/drive/v3/files');
-  fullUrl.searchParams.set('fields', 'files(id,name,mimeType,createdTime,size,description)');
-  fullUrl.searchParams.set('q', `mimeType='audio/mpeg' and '${PODCAST_FOLDER_ID}' in parents and trashed=false`);
-  fullUrl.searchParams.set('orderBy', 'createdTime asc');
-  fullUrl.searchParams.set('pageSize', 50);
+  // 支援分頁：超過 1000 集也不會漏掉
+  const baseUrl = new URL(MATON_BASE + '/google-drive/drive/v3/files');
+  baseUrl.searchParams.set('fields', 'files(id,name,mimeType,createdTime,size,description),nextPageToken');
+  baseUrl.searchParams.set('q', `mimeType='audio/mpeg' and '${PODCAST_FOLDER_ID}' in parents and trashed=false`);
+  baseUrl.searchParams.set('orderBy', 'createdTime asc');
+  baseUrl.searchParams.set('pageSize', 1000);
 
-  const parsed = new URL(fullUrl.toString());
-  const result = await httpsGet(parsed.hostname, parsed.pathname, parsed.search);
-  const files = result.files || [];
-  console.log(`[RSS] Fetched ${files.length} files from Google Drive`);
+  let allFiles = [];
+  let pageToken = null;
+  do {
+    const url = new URL(baseUrl.toString());
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+    const parsed = new URL(url.toString());
+    const result = await httpsGet(parsed.hostname, parsed.pathname, parsed.search);
+    if (result.files) allFiles = allFiles.concat(result.files);
+    pageToken = result.nextPageToken;
+  } while (pageToken);
+
+  console.log(`[RSS] Fetched ${allFiles.length} files from Google Drive`);
   // 反轉：最新的集數在最上面
-  return files.reverse();
+  return allFiles.reverse();
 }
 
 function buildRss(files) {
