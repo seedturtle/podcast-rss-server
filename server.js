@@ -32,6 +32,12 @@ function getAudioUrl(file) {
   return `https://seedturtlepodcast.zeabur.app/audio/${fileId}.mp3`;
 }
 
+/** 從檔名取出 YYYYMMDD（如：拉拉熊廣播_20260602.mp3） */
+function extractDate(name) {
+  const m = name.match(/(\d{4})[_-]?(\d{2})[_-]?(\d{2})/);
+  return m ? parseInt(m[1] + m[2] + m[3], 10) : null;
+}
+
 // 發送 Drive API 請求（純 Node.js，零依賴）
 function httpsGet(hostname, pathname, search) {
   return new Promise((resolve, reject) => {
@@ -60,12 +66,11 @@ function httpsGet(hostname, pathname, search) {
 }
 
 async function getPodcastFiles() {
-  // 查詢 podcast 資料夾中的所有 mp3 檔，按 createdTime 排序（最舊在前 = EP1）
+  // 查詢 podcast 資料夾中的所有 mp3 檔
   // 支援分頁：超過 1000 集也不會漏掉
   const baseUrl = new URL(MATON_BASE + '/google-drive/drive/v3/files');
   baseUrl.searchParams.set('fields', 'files(id,name,mimeType,createdTime,size,description),nextPageToken');
   baseUrl.searchParams.set('q', `mimeType='audio/mpeg' and '${PODCAST_FOLDER_ID}' in parents and trashed=false`);
-  baseUrl.searchParams.set('orderBy', 'createdTime asc');
   baseUrl.searchParams.set('pageSize', 1000);
 
   let allFiles = [];
@@ -80,7 +85,18 @@ async function getPodcastFiles() {
   } while (pageToken);
 
   console.log(`[RSS] Fetched ${allFiles.length} files from Google Drive`);
-  // 反轉：最新的集數在最上面
+  // 🔧 以檔名日期排序（穩定，不受刪檔影響）
+  // 同日期→以上傳時間（createdTime）做 tiebreaker
+  allFiles.sort((a, b) => {
+    const da = extractDate(a.name);
+    const db = extractDate(b.name);
+    if (da !== null && db !== null && da !== db) return da - db;
+    if (da !== null && db === null) return -1;
+    if (da === null && db !== null) return 1;
+    return new Date(a.createdTime) - new Date(b.createdTime);
+  });
+  console.log(`[RSS] Fetched ${allFiles.length} files, sorted by filename date`);
+  // 反轉：最新的集數在最上面（RSS 顯示用）
   return allFiles.reverse();
 }
 
@@ -137,7 +153,7 @@ function buildRss(files) {
       <itunes:summary><![CDATA[拉拉熊晨間廣播，${title}。🌏 國際大局 💹 財經科技 🤖 AI Agent]]></itunes:summary>
       <pubDate>${pubDate}</pubDate>
       <enclosure url="${audioUrl}" type="audio/mpeg" length="${size}"/>
-      <guid isPermaLink="false">seedturtle_ep${episodeNum}_${file.id}</guid>
+      <guid isPermaLink="false">seedturtle_${dateStr}_${file.id}</guid>
       <itunes:title>${title}</itunes:title>
       <itunes:episode>${episodeNum}</itunes:episode>
       <itunes:duration>${Math.floor(size / 16000)}</itunes:duration>
