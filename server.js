@@ -32,10 +32,10 @@ function getAudioUrl(file) {
   return `https://seedturtlepodcast.zeabur.app/audio/${fileId}.mp3`;
 }
 
-/** 從檔名取出 YYYYMMDD（如：拉拉熊廣播_20260602.mp3） */
+/** 從檔名取出 YYYYMMDD 或 YYYYMMDDHHMM（如：拉拉熊廣播_20260602.mp3 或 拉拉熊廣播_202606021400.mp3） */
 function extractDate(name) {
-  const m = name.match(/(\d{4})[_-]?(\d{2})[_-]?(\d{2})/);
-  return m ? parseInt(m[1] + m[2] + m[3], 10) : null;
+  const m = name.match(/(\d{4})[_-]?(\d{2})[_-]?(\d{2})[_-]?(\d{4})?/);
+  return m ? parseInt(m[1] + m[2] + m[3] + (m[4] || '0000'), 10) : null;
 }
 
 // 發送 Drive API 請求（純 Node.js，零依賴）
@@ -136,12 +136,15 @@ function buildRss(files) {
   files.forEach((file, index) => {
     const totalFiles = files.length;
     const episodeNum = totalFiles - index;
-    // 從檔名抓日期（如：拉拉熊廣播_20260507.mp3）
-    const nameMatch = file.name.match(/(\d{8})/);
-    const dateStr = nameMatch ? nameMatch[1] : '';
-    const title = dateStr
-      ? `第${episodeNum}集｜${dateStr.slice(0,4)}/${dateStr.slice(4,6)}/${dateStr.slice(6,8)}`
-      : `第${episodeNum}集`;
+    // 從檔名抓日期時間（如：拉拉熊廣播_202606021400.mp3 或 拉拉熊廣播_20260602.mp3）
+    const nameMatch = file.name.match(/(\d{8,12})/);
+    const rawTs = nameMatch ? nameMatch[1] : '';
+    const datePart = rawTs.slice(0,8);
+    const timePart = rawTs.length >= 12 ? rawTs.slice(8,12) : '';
+    const displayDate = datePart
+      ? `${datePart.slice(0,4)}/${datePart.slice(4,6)}/${datePart.slice(6,8)}${timePart ? ' ' + timePart.slice(0,2) + ':' + timePart.slice(2) : ''}`
+      : '';
+    const title = displayDate ? `第${episodeNum}集｜${displayDate}` : `第${episodeNum}集`;
     const pubDate = file.createdTime ? new Date(file.createdTime).toUTCString() : now;
     const size = parseInt(file.size || 0);
     const audioUrl = getAudioUrl(file);
@@ -153,7 +156,7 @@ function buildRss(files) {
       <itunes:summary><![CDATA[拉拉熊晨間廣播，${title}。🌏 國際大局 💹 財經科技 🤖 AI Agent]]></itunes:summary>
       <pubDate>${pubDate}</pubDate>
       <enclosure url="${audioUrl}" type="audio/mpeg" length="${size}"/>
-      <guid isPermaLink="false">seedturtle_${dateStr}_${file.id}</guid>
+      <guid isPermaLink="false">seedturtle_${rawTs}_${file.id}</guid>
       <itunes:title>${title}</itunes:title>
       <itunes:episode>${episodeNum}</itunes:episode>
       <itunes:duration>${Math.floor(size / 16000)}</itunes:duration>
